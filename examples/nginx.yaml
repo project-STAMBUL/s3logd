@@ -1,0 +1,78 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: s3logd
+data:
+  streams.yaml: |
+    - file: /var/log/nginx/access.log
+      pushRate: 300 # 5 mins
+    - file: /var/log/nginx/error.log
+      pushRate: 300
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+spec:
+  selector:
+    app: nginx
+  ports:
+    - protocol: TCP
+      port: 80
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      volumes:
+      - name: logdir
+        emptyDir: {}
+      - name: s3logd-config
+        configMap:
+          name: s3logd
+
+      containers:
+      - name: nginx
+        image: nginx:latest
+        ports:
+        - containerPort: 80
+        volumeMounts:
+        - name: logdir
+          mountPath: "/var/log/nginx"
+
+      - name: s3logd
+        image: ghcr.io/protosam/s3logd:latest
+        # these should really be in a secret
+        env:
+        - name: S3_REGION
+          value: "nyc1"
+        - name: S3_ENDPOINT
+          value: "nyc1.civo.com"
+        - name: S3_BUCKET
+          value: "main-picture-frame"
+        - name: S3_BUCKET_PATH
+          value: "/some/path/here"
+        - name: S3_ACCESS_KEY_ID
+          value: "AN_ID_GOES_HERE"
+        - name: S3_SECRET_ACCESS_KEY
+          value: "SOME_ACCESS_KEY_FOR_YO_RADOS_GATEWAY_HERE"
+        volumeMounts:
+        - name: logdir
+          mountPath: "/var/log/nginx"
+        - name: s3logd-config
+          mountPath: "/config"
