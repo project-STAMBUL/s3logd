@@ -244,7 +244,8 @@ func streamFileToS3(file string, pushRate int) {
 // and where to upload the file in a bucked
 func setFilePaths(file string) (string, string, string) {
 	filename := filepath.Base(file)
-	filename = filename + "." + fmt.Sprintf("%d", time.Now().Unix())
+	// Don't add unix time now so we could overwrite single file at one day
+	// filename = filename + "." + fmt.Sprintf("%d", time.Now().Unix())
 	tempfile := filepath.Join(tempDir, filename)
 	destfile := filepath.Join(S3_BUCKET_PATH, time.Now().Format("2006/01/02"), hostname, filename)
 	return filename, tempfile, destfile
