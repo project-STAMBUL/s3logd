@@ -4,20 +4,20 @@
 """
 import os
 import yaml
-import logging
 from multiprocessing.pool import ThreadPool
 from argparse import ArgumentParser, Namespace
 
 from minio import Minio
 
 from src.minio_worker import minio_worker
+from src.utils.logging_utils import get_logger
 
 MINIO_ENDPOINT = os.environ["S3_ENDPOINT"]
 ACCESS_KEY = os.environ["S3_ACCESS_KEY_ID"]
 SECRET_KEY = os.environ["S3_SECRET_ACCESS_KEY"]
 S3_BUCKET = os.environ["S3_BUCKET"]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_args() -> Namespace:
@@ -41,7 +41,7 @@ def s3log(
     """
     with open(streams_path) as fin:
         streams = yaml.safe_load(fin)
-    print(streams)
+    logger.info(streams)
     # Запускаем поток, который будет бесконечно пушить файл в minio
 
     _client = Minio(

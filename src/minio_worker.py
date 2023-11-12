@@ -1,11 +1,12 @@
 import io
 import os
 import time
-import logging
 from typing import Dict
 from datetime import datetime
 
 from minio import Minio
+
+from src.utils.logging_utils import get_logger
 
 MINIO_ENDPOINT = os.environ["S3_ENDPOINT"]
 ACCESS_KEY = os.environ["S3_ACCESS_KEY_ID"]
@@ -25,21 +26,13 @@ def minio_worker(
     """
     file_path = stream["file"]
     push_rate = stream["pushRate"]
-    logger = logging.getLogger(f"Stream: {file_path}")
+    logger = get_logger(f"Stream: {file_path}")
 
     _client = Minio(
         MINIO_ENDPOINT,
         secure=False,
         access_key=ACCESS_KEY,
         secret_key=SECRET_KEY,
-    )
-
-    # Generating object name
-    object_name = os.path.basename(file_path)
-
-    object_name = os.path.join(
-        datetime.now().date().strftime("%Y-%m-%d"),
-        "_".join([datetime.now().strftime("%H"), object_name]),
     )
 
     while True:
@@ -49,6 +42,12 @@ def minio_worker(
             continue
 
         try:
+            # Generating object name
+            object_name = os.path.basename(file_path)
+            object_name = os.path.join(
+                datetime.now().date().strftime("%Y-%m-%d"),
+                "_".join([datetime.now().strftime("%H"), object_name]),
+            )
             with open(file_path, "rb") as fin:
                 file_bytes = fin.read()
                 _client.put_object(
@@ -57,5 +56,6 @@ def minio_worker(
                     io.BytesIO(file_bytes),
                     length=len(file_bytes),
                 )
+            logger.info("Pushed %s to %s:%s", file_path, S3_BUCKET, object_name)
         except Exception as ex:
             logger.error("Error: %s", ex)
