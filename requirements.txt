@@ -1,0 +1,3 @@
+black
+PyYAML
+minio
