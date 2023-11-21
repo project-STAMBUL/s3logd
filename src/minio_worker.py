@@ -44,10 +44,10 @@ def minio_worker(
         try:
             # Generating object name
             object_name = os.path.basename(file_path)
-            # object_name = os.path.join(
-            #     datetime.now().date().strftime("%Y-%m-%d"),
-            #     "_".join([datetime.now().strftime("%H"), object_name]),
-            # )
+            object_name = os.path.join(
+                datetime.now().date().strftime("%Y-%m-%d"),
+                "_".join([datetime.now().strftime("%H"), object_name]),
+            )
             with open(file_path, "rb") as fin:
                 file_bytes = fin.read()
                 _client.put_object(
