@@ -1,6 +1,8 @@
 import io
+import re
 import os
 import time
+from glob import glob
 from typing import Dict
 from datetime import datetime
 
@@ -16,18 +18,57 @@ S3_BUCKET = os.environ["S3_BUCKET"]
 ZONE = zoneinfo.ZoneInfo("Europe/Moscow")
 
 
-def minio_worker(
-    stream: Dict,
+def backup_worker(
+    file_path: str,
+    regex_pattern: str,
+    clear_after_backup: bool,
+    backup_check_rate: int = 3600,
 ):
+    logger = get_logger(f"Backup: {file_path}")
+    pattern = re.compile(regex_pattern)
+
+    _client = Minio(
+        MINIO_ENDPOINT,
+        secure=False,
+        access_key=ACCESS_KEY,
+        secret_key=SECRET_KEY,
+    )
+
+    while True:
+        time.sleep(backup_check_rate)
+        files_to_check = glob(file_path + "*")
+        for file in files_to_check:
+            # Check if the file matches the pattern
+            if pattern.match(file):
+                logger.info("Found match to backup: %s, regex=%s", file, regex_pattern)
+                object_name = os.path.join(
+                    file.rsplit(".", 1)[-1], os.path.basename(file)
+                )
+                with open(file, "rb") as fin:
+                    file_bytes = fin.read()
+                    _client.put_object(
+                        S3_BUCKET,
+                        object_name,
+                        io.BytesIO(file_bytes),
+                        length=len(file_bytes),
+                    )
+                logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
+                if clear_after_backup:
+                    os.remove(file)
+                break
+        else:
+            logger.warning(
+                "backup file %s;regex=%s doesn't exists", file_path, regex_pattern
+            )
+
+
+def stream_worker(file_path: str, push_rate: int):
     """
-    Пушим в MINIO
-    Args:
-        stream: Аргументы потока
-                file - путь до файла
-                pushRate - как часто пушим
+    Беспрерывно стримим файл, который подходит под описание
+    :param file_path:
+    :param push_rate:
+    :return:
     """
-    file_path = stream["file"]
-    push_rate = stream["pushRate"]
     logger = get_logger(f"Stream: {file_path}")
 
     _client = Minio(
@@ -59,6 +100,39 @@ def minio_worker(
                     io.BytesIO(file_bytes),
                     length=len(file_bytes),
                 )
-            logger.info("Pushed %s to %s:%s", file_path, S3_BUCKET, object_name)
+            logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
         except Exception as ex:
             logger.error("Error: %s", ex)
+
+
+def minio_worker(
+    stream: Dict,
+):
+    """
+    Пушим в MINIO
+    Args:
+        stream: Аргументы потока
+                file - путь до файла
+                type: monitor
+                    pushRate - как часто пушим
+                type: backup
+                    regex_pattern: regex для матчинга файлов
+                    clear_after_backup: удалить после бэкапа
+    """
+    file_path = stream["file"]
+    monitoring_type = stream["type"]
+
+    if monitoring_type == "stream":
+        push_rate = stream["pushRate"]
+        stream_worker(file_path=file_path, push_rate=push_rate)
+    elif monitoring_type == "backup":
+        regex_pattern = stream["regex_pattern"]
+        clear_after_backup = stream["clear_after_backup"]
+        backup_worker(
+            file_path,
+            regex_pattern=regex_pattern,
+            clear_after_backup=clear_after_backup,
+            backup_check_rate=60 * 60,
+        )
+    else:
+        raise ValueError(f"unknown {monitoring_type=}; Must be 'stream' or 'backup'")

@@ -3,6 +3,7 @@
     Или любой другой object-storage с S3-compatible интерфейсом
 """
 import os
+import json
 import yaml
 from multiprocessing.pool import ThreadPool
 from argparse import ArgumentParser, Namespace
@@ -41,7 +42,7 @@ def s3log(
     """
     with open(streams_path) as fin:
         streams = yaml.safe_load(fin)
-    logger.info(streams)
+    logger.info(json.dumps(streams, indent=4))
     # Запускаем поток, который будет бесконечно пушить файл в minio
 
     _client = Minio(

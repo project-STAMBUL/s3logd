@@ -1,0 +1,13 @@
+- file: scanner.log
+  type: backup
+  regex_pattern: ^.+\.\d{4}-\d{2}-\d{2}$
+  clear_after_backup: true
+- file: /home/app/mounted/logs/scanner.log
+  type: stream
+  pushRate: 20
+- file: /home/app/mounted/logs/exceptions.log
+  type: stream
+  pushRate: 20
+- file: /home/app/mounted/blacklist.json
+  type: stream
+  pushRate: 20
