@@ -56,7 +56,7 @@ def s3log(
         logger.warning("Bucket %s not found; Creating one...", S3_BUCKET)
         _client.make_bucket(S3_BUCKET)
 
-    with ThreadPool() as pool:
+    with ThreadPool(len(streams)) as pool:
         for _ in pool.imap_unordered(minio_worker, streams):
             pass
 
