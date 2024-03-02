@@ -37,29 +37,32 @@ def backup_worker(
     while True:
         time.sleep(backup_check_rate)
         files_to_check = glob(file_path + "*")
-        for file in files_to_check:
-            # Check if the file matches the pattern
-            if pattern.match(file):
-                logger.info("Found match to backup: %s, regex=%s", file, regex_pattern)
-                object_name = os.path.join(
-                    file.rsplit(".", 1)[-1], os.path.basename(file)
-                )
-                with open(file, "rb") as fin:
-                    file_bytes = fin.read()
-                    _client.put_object(
-                        S3_BUCKET,
-                        object_name,
-                        io.BytesIO(file_bytes),
-                        length=len(file_bytes),
+        try:
+            for file in files_to_check:
+                # Check if the file matches the pattern
+                if pattern.match(file):
+                    logger.info("Found match to backup: %s, regex=%s", file, regex_pattern)
+                    object_name = os.path.join(
+                        file.rsplit(".", 1)[-1], os.path.basename(file)
                     )
-                logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
-                if clear_after_backup:
-                    os.remove(file)
-                break
-        else:
-            logger.warning(
-                "backup file %s;regex=%s doesn't exists", file_path, regex_pattern
-            )
+                    with open(file, "rb") as fin:
+                        file_bytes = fin.read()
+                        _client.put_object(
+                            S3_BUCKET,
+                            object_name,
+                            io.BytesIO(file_bytes),
+                            length=len(file_bytes),
+                        )
+                    logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
+                    if clear_after_backup:
+                        os.remove(file)
+                    break
+                else:
+                    logger.warning(
+                        "backup file %s;regex=%s doesn't exists", file_path, regex_pattern
+                    )
+        except Exception as ex:
+            logger.error("Error: %s", ex)
 
 
 def stream_worker(file_path: str, push_rate: int):
