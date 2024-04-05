@@ -6,10 +6,10 @@ from glob import glob
 from typing import Dict
 from datetime import datetime
 
-from minio import Minio
 import zoneinfo
 
 from src.utils.logging_utils import get_logger
+from src.utils.get_client import get_client
 
 MINIO_ENDPOINT = os.environ["S3_ENDPOINT"]
 ACCESS_KEY = os.environ["S3_ACCESS_KEY_ID"]
@@ -27,12 +27,13 @@ def backup_worker(
     logger = get_logger(f"Backup: {file_path}")
     pattern = re.compile(regex_pattern)
 
-    _client = Minio(
-        MINIO_ENDPOINT,
-        secure=False,
-        access_key=ACCESS_KEY,
-        secret_key=SECRET_KEY,
-    )
+    _client = None
+    while _client is None:
+        _client = get_client(MINIO_ENDPOINT, ACCESS_KEY, SECRET_KEY)
+        if _client is not None:
+            break
+        logger.warning("Can't establish MINIO connection: %s", MINIO_ENDPOINT)
+        time.sleep(backup_check_rate)
 
     while True:
         time.sleep(backup_check_rate)
@@ -41,7 +42,9 @@ def backup_worker(
             for file in files_to_check:
                 # Check if the file matches the pattern
                 if pattern.match(file):
-                    logger.info("Found match to backup: %s, regex=%s", file, regex_pattern)
+                    logger.info(
+                        "Found match to backup: %s, regex=%s", file, regex_pattern
+                    )
                     object_name = os.path.join(
                         file.rsplit(".", 1)[-1], os.path.basename(file)
                     )
@@ -53,13 +56,17 @@ def backup_worker(
                             io.BytesIO(file_bytes),
                             length=len(file_bytes),
                         )
-                    logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
+                    logger.info(
+                        "Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name
+                    )
                     if clear_after_backup:
                         os.remove(file)
                     break
                 else:
                     logger.warning(
-                        "backup file %s;regex=%s doesn't exists", file_path, regex_pattern
+                        "backup file %s;regex=%s doesn't exists",
+                        file_path,
+                        regex_pattern,
                     )
         except Exception as ex:
             logger.error("Error: %s", ex)
@@ -74,12 +81,13 @@ def stream_worker(file_path: str, push_rate: int):
     """
     logger = get_logger(f"Stream: {file_path}")
 
-    _client = Minio(
-        MINIO_ENDPOINT,
-        secure=False,
-        access_key=ACCESS_KEY,
-        secret_key=SECRET_KEY,
-    )
+    _client = None
+    while _client is None:
+        _client = get_client(MINIO_ENDPOINT, ACCESS_KEY, SECRET_KEY)
+        if _client is not None:
+            break
+        logger.warning("Can't establish MINIO connection: %s", MINIO_ENDPOINT)
+        time.sleep(push_rate)
 
     while True:
         time.sleep(push_rate)

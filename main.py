@@ -5,13 +5,13 @@
 import os
 import json
 import yaml
+import time
 from multiprocessing.pool import ThreadPool
 from argparse import ArgumentParser, Namespace
 
-from minio import Minio
-
 from src.minio_worker import minio_worker
 from src.utils.logging_utils import get_logger
+from src.utils.get_client import get_client
 
 MINIO_ENDPOINT = os.environ["S3_ENDPOINT"]
 ACCESS_KEY = os.environ["S3_ACCESS_KEY_ID"]
@@ -45,12 +45,14 @@ def s3log(
     logger.info(json.dumps(streams, indent=4))
     # Запускаем поток, который будет бесконечно пушить файл в minio
 
-    _client = Minio(
-        MINIO_ENDPOINT,
-        secure=False,
-        access_key=ACCESS_KEY,
-        secret_key=SECRET_KEY,
-    )
+    _client = None
+    while _client is None:
+        _client = get_client(MINIO_ENDPOINT, ACCESS_KEY, SECRET_KEY)
+        if _client is not None:
+            break
+        logger.warning("Can't establish MINIO connection: %s", MINIO_ENDPOINT)
+        time.sleep(10)
+
     found = _client.bucket_exists(S3_BUCKET)
     if not found:
         logger.warning("Bucket %s not found; Creating one...", S3_BUCKET)
