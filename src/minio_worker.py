@@ -35,41 +35,36 @@ def backup_worker(
         logger.warning("Can't establish MINIO connection: %s", MINIO_ENDPOINT)
         time.sleep(backup_check_rate)
 
-    while True:
-        time.sleep(backup_check_rate)
-        files_to_check = glob(file_path + "*")
-        try:
-            for file in files_to_check:
-                # Check if the file matches the pattern
-                if pattern.match(file):
-                    logger.info(
-                        "Found match to backup: %s, regex=%s", file, regex_pattern
+    time.sleep(backup_check_rate)
+    files_to_check = glob(file_path + "*")
+    try:
+        for file in files_to_check:
+            # Check if the file matches the pattern
+            if pattern.match(file):
+                logger.info("Found match to backup: %s, regex=%s", file, regex_pattern)
+                object_name = os.path.join(
+                    file.rsplit(".", 1)[-1], os.path.basename(file)
+                )
+                with open(file, "rb") as fin:
+                    file_bytes = fin.read()
+                    _client.put_object(
+                        S3_BUCKET,
+                        object_name,
+                        io.BytesIO(file_bytes),
+                        length=len(file_bytes),
                     )
-                    object_name = os.path.join(
-                        file.rsplit(".", 1)[-1], os.path.basename(file)
-                    )
-                    with open(file, "rb") as fin:
-                        file_bytes = fin.read()
-                        _client.put_object(
-                            S3_BUCKET,
-                            object_name,
-                            io.BytesIO(file_bytes),
-                            length=len(file_bytes),
-                        )
-                    logger.info(
-                        "Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name
-                    )
-                    if clear_after_backup:
-                        os.remove(file)
-                    break
-                else:
-                    logger.warning(
-                        "backup file %s;regex=%s doesn't exists",
-                        file_path,
-                        regex_pattern,
-                    )
-        except Exception as ex:
-            logger.error("Error: %s", ex)
+                logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
+                if clear_after_backup:
+                    os.remove(file)
+                break
+            else:
+                logger.warning(
+                    "backup file %s;regex=%s doesn't exists",
+                    file_path,
+                    regex_pattern,
+                )
+    except Exception as ex:
+        logger.error("Error: %s", ex)
 
 
 def stream_worker(file_path: str, push_rate: int):
@@ -89,31 +84,30 @@ def stream_worker(file_path: str, push_rate: int):
         logger.warning("Can't establish MINIO connection: %s", MINIO_ENDPOINT)
         time.sleep(push_rate)
 
-    while True:
-        time.sleep(push_rate)
-        if not os.path.exists(file_path):
-            logger.warning("stream file %s doesn't exists", file_path)
-            continue
+    time.sleep(push_rate)
+    if not os.path.exists(file_path):
+        logger.warning("stream file %s doesn't exists", file_path)
+        return
 
-        try:
-            # Generating object name
-            now = datetime.now(ZONE)
-            object_name = os.path.basename(file_path)
-            object_name = os.path.join(
-                now.date().strftime("%Y-%m-%d"),
-                "_".join([now.strftime("%H"), object_name]),
+    try:
+        # Generating object name
+        now = datetime.now(ZONE)
+        object_name = os.path.basename(file_path)
+        object_name = os.path.join(
+            now.date().strftime("%Y-%m-%d"),
+            "_".join([now.strftime("%H"), object_name]),
+        )
+        with open(file_path, "rb") as fin:
+            file_bytes = fin.read()
+            _client.put_object(
+                S3_BUCKET,
+                object_name,
+                io.BytesIO(file_bytes),
+                length=len(file_bytes),
             )
-            with open(file_path, "rb") as fin:
-                file_bytes = fin.read()
-                _client.put_object(
-                    S3_BUCKET,
-                    object_name,
-                    io.BytesIO(file_bytes),
-                    length=len(file_bytes),
-                )
-            logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
-        except Exception as ex:
-            logger.error("Error: %s", ex)
+        logger.info("Pushed %s to %s:%s", file_path, "S3_BUCKET", object_name)
+    except Exception as ex:
+        logger.error("Error: %s", ex)
 
 
 def minio_worker(
@@ -135,15 +129,17 @@ def minio_worker(
 
     if monitoring_type == "stream":
         push_rate = stream["pushRate"]
-        stream_worker(file_path=file_path, push_rate=push_rate)
+        while True:
+            stream_worker(file_path=file_path, push_rate=push_rate)
     elif monitoring_type == "backup":
         regex_pattern = stream["regex_pattern"]
         clear_after_backup = stream["clear_after_backup"]
-        backup_worker(
-            file_path,
-            regex_pattern=regex_pattern,
-            clear_after_backup=clear_after_backup,
-            backup_check_rate=60 * 60,
-        )
+        while True:
+            backup_worker(
+                file_path,
+                regex_pattern=regex_pattern,
+                clear_after_backup=clear_after_backup,
+                backup_check_rate=60 * 60,
+            )
     else:
         raise ValueError(f"unknown {monitoring_type=}; Must be 'stream' or 'backup'")
