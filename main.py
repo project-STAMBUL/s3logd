@@ -53,10 +53,20 @@ def s3log(
         logger.warning("Can't establish MINIO connection: %s", MINIO_ENDPOINT)
         time.sleep(10)
 
-    found = _client.bucket_exists(S3_BUCKET)
-    if not found:
-        logger.warning("Bucket %s not found; Creating one...", S3_BUCKET)
-        _client.make_bucket(S3_BUCKET)
+    # Zero fail policy
+    while True:
+        try:
+            found = _client.bucket_exists(S3_BUCKET)
+            if not found:
+                logger.warning("Bucket %s not found; Creating one...", S3_BUCKET)
+                _client.make_bucket(S3_BUCKET)
+            break
+        except Exception as e:
+            logger.error(
+                "Can't establish MINIO connection: %s; exc %s", MINIO_ENDPOINT, e
+            )
+            time.sleep(10)
+            pass
 
     with ThreadPool(len(streams)) as pool:
         for _ in pool.imap_unordered(minio_worker, streams):
